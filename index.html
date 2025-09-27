@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Starlight Course Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%);
+            overflow: hidden;
+        }
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+        .main-content {
+            position: relative;
+            z-index: 1;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        .file-input-button { cursor: pointer; display: inline-block; }
+        input[type="file"] { display: none; }
+
+        /* Custom Scrollbar */
+        .main-content::-webkit-scrollbar { width: 8px; }
+        .main-content::-webkit-scrollbar-track { background: transparent; }
+        .main-content::-webkit-scrollbar-thumb { background: rgba(75, 85, 99, 0.5); border-radius: 10px; }
+        .main-content::-webkit-scrollbar-thumb:hover { background: rgba(107, 114, 128, 0.7); }
+        .scrollable-panel::-webkit-scrollbar { width: 6px; }
+        .scrollable-panel::-webkit-scrollbar-track { background: #1f2937; }
+        .scrollable-panel::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
+
+        /* Glassmorphism Effect */
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Glow Effect */
+        .glow-border {
+            box-shadow: 0 0 5px rgba(99, 102, 241, 0.2), 0 0 20px rgba(99, 102, 241, 0.1);
+        }
+        
+        .copy-btn {
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        .copy-btn:hover {
+            opacity: 1;
+        }
+
+        /* Modal Styles */
+        #exportModal { transition: opacity 0.3s ease; }
+        #exportModal > div { transition: transform 0.3s ease; }
+    </style>
+</head>
+<body class="text-gray-200 antialiased">
+
+    <canvas id="bg-canvas"></canvas>
+
+    <div id="exportModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50 p-4 opacity-0">
+        <div class="glass-panel rounded-xl shadow-lg p-6 w-full max-w-sm text-center transform scale-95 glow-border">
+            <h3 class="text-xl font-bold text-white mb-4">Choose Export Format</h3>
+            <p class="text-gray-400 mb-6 text-sm">A summary report will be added to the top of the downloaded file for the <strong id="exportCount">0</strong> accounts in the list.</p>
+            <div class="flex flex-col gap-4">
+                <button id="exportUserPass" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-5 rounded-lg transition-all duration-300 transform hover:scale-105">Export User:Pass</button>
+                <button id="exportFullDetails" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-5 rounded-lg transition-all duration-300 transform hover:scale-105">Export Full Details</button>
+            </div>
+            <button id="closeModal" class="mt-6 text-gray-500 hover:text-white transition-colors text-sm">Cancel</button>
+        </div>
+    </div>
+
+
+    <div class="main-content">
+        <div class="container mx-auto p-4 md:p-8">
+            
+            <header class="text-center mb-8" id="header">
+                <h1 class="text-3xl md:text-5xl font-bold text-white tracking-tighter">Starlight Viewer</h1>
+                <p class="text-gray-400 mt-2">Upload your account data file to explore.</p>
+            </header>
+
+            <div id="controls" class="glass-panel p-6 rounded-xl shadow-lg mb-8 flex flex-col md:flex-row items-center gap-6 glow-border">
+                <div class="w-full md:w-auto">
+                    <label for="fileUpload" class="file-input-button bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-5 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg shadow-indigo-500/30 w-full text-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L6.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                        Upload .txt File
+                    </label>
+                    <input type="file" id="fileUpload" accept=".txt">
+                </div>
+                <p id="fileName" class="text-gray-400 text-sm italic w-full md:w-auto text-center md:text-left"></p>
+
+                <div class="relative w-full flex-grow opacity-0" id="searchContainer">
+                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><svg class="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg></div>
+                    <input type="text" id="searchInput" placeholder="Globally search accounts by name, email, or course..." class="w-full bg-gray-900/50 text-white border border-gray-700 rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                </div>
+            </div>
+
+            <div id="initialMessage" class="text-center py-16">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                <h3 class="mt-2 text-lg font-medium text-gray-500">Awaiting Data</h3>
+                <p class="mt-1 text-sm text-gray-600">Please upload a file to begin.</p>
+            </div>
+
+            <div id="resultsContainer" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-1 glass-panel p-6 rounded-xl shadow-lg glow-border">
+                    <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+                        <h2 class="text-2xl font-bold">Accounts (<span id="accountCount">0</span>)</h2>
+                        <button id="exportButton" class="hidden bg-gray-700 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg transition-all text-sm transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-gray-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-1.5" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 4h-4V3h4v4zm-6 0H6V3h4v4zm4 2H6v2h4v-2zm-4 4H6v2h4v-2zm6-4h-4v2h4v-2zm-4 4h-2v2h2v-2zm4 0h-2v2h2v-2z" clip-rule="evenodd" /><path d="M14 3h-4v4h4V3z" /></svg>
+                            Save List
+                        </button>
+                    </div>
+                    <div id="filterContainer" class="flex flex-wrap gap-2 mb-4 max-h-32 overflow-y-auto scrollable-panel pr-2"></div>
+                    <div id="accountList" class="space-y-2 max-h-[55vh] overflow-y-auto pr-2 scrollable-panel"></div>
+                    <p id="noAccountsMessage" class="text-center text-gray-500 py-8 hidden">No accounts match your search.</p>
+                </div>
+
+                <div class="lg:col-span-2 space-y-8">
+                    <div id="accountDetailsWrapper" class="glass-panel p-6 rounded-xl shadow-lg h-fit opacity-0 glow-border">
+                        <h2 class="text-2xl font-bold mb-6 border-b border-gray-700 pb-3">Account Details</h2>
+                        <div id="accountDetails" class="space-y-4"></div>
+                    </div>
+
+                    <div id="courseListWrapper" class="glass-panel p-6 rounded-xl shadow-lg opacity-0">
+                         <div class="flex flex-col sm-flex-row justify-between sm-items-center mb-6 border-b border-gray-700 pb-3">
+                            <h2 class="text-2xl font-bold mb-2 sm-mb-0">Courses (<span id="courseCount">0</span>)</h2>
+                            <div class="relative w-full sm-w-1/2">
+                                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><svg class="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg></div>
+                                <input type="text" id="courseSearchInput" placeholder="Search in this account's courses..." class="w-full bg-gray-900/50 text-white border border-gray-700 rounded-lg py-2 pl-10 pr-4 focus-outline-none focus-ring-2 focus-ring-indigo-500 transition-all">
+                            </div>
+                        </div>
+                        <ul id="courseList" class="space-y-3 max-h-[55vh] overflow-y-auto pr-2 scrollable-panel"></ul>
+                    </div>
+                    
+                    <div id="selectAccountPrompt" class="text-center py-16 text-gray-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z" /></svg>
+                        <p class="mt-4 text-lg">Select an account from the list to view details.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- THREE.JS BACKGROUND SETUP ---
+        let scene, camera, renderer, starParticles, nebulaParticles;
+        let mouseX = 0, mouseY = 0;
+
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
+            camera.position.z = 5;
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('bg-canvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000, 0);
+            const starGeo = new THREE.BufferGeometry();
+            const starVertices = [], starVelocities = [];
+            for (let i = 0; i < 6000; i++) {
+                starVertices.push((Math.random() - 0.5) * 2000, (Math.random() - 0.5) * 2000, (Math.random() - 0.5) * 2000);
+                starVelocities.push(0, 0, Math.random() * 0.5 + 0.2);
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+            starGeo.setAttribute('velocity', new THREE.Float32BufferAttribute(starVelocities, 3));
+            let starSprite = new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAHBJREFUOE9jZKAQMFKon2HAXUb9/z8c53d0e5Px/3/P9v8/w34g02OU/P//M9P4/z/T8P8/U/X/P5+B/v8/w8T/P8P8/z+T/f8/Eyn5/+8/k/3//zMy/P//Mzv8/z8zCgASRMAZAOS2/w+G2gEEGACMWgLf2tAX2wAAAABJRU5ErkJggg==');
+            let starMaterial = new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.7, map: starSprite, transparent: true, blending: THREE.AdditiveBlending });
+            starParticles = new THREE.Points(starGeo, starMaterial);
+            scene.add(starParticles);
+            const nebulaGeo = new THREE.BufferGeometry();
+            const nebulaVertices = [], nebulaColors = [];
+            const nebulaColor1 = new THREE.Color("#2a3f68");
+            const nebulaColor2 = new THREE.Color("#623a61");
+            for (let i = 0; i < 1500; i++) {
+                nebulaVertices.push((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000);
+                const color = Math.random() > 0.5 ? nebulaColor1 : nebulaColor2;
+                nebulaColors.push(color.r, color.g, color.b);
+            }
+            nebulaGeo.setAttribute('position', new THREE.Float32BufferAttribute(nebulaVertices, 3));
+            nebulaGeo.setAttribute('color', new THREE.Float32BufferAttribute(nebulaColors, 3));
+            let nebulaMaterial = new THREE.PointsMaterial({ size: 25, vertexColors: true, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false });
+            nebulaParticles = new THREE.Points(nebulaGeo, nebulaMaterial);
+            scene.add(nebulaParticles);
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            animateStars();
+        }
+
+        function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+        function onMouseMove(event) { mouseX = (event.clientX - window.innerWidth / 2) * 0.0001; mouseY = (event.clientY - window.innerHeight / 2) * 0.0001; }
+        function animateStars() {
+            const positions = starParticles.geometry.attributes.position.array;
+            const velocities = starParticles.geometry.attributes.velocity.array;
+            for (let i = 0; i < positions.length; i += 3) { positions[i + 2] += velocities[i + 2]; if (positions[i + 2] > camera.position.z) positions[i + 2] = -1000; }
+            starParticles.geometry.attributes.position.needsUpdate = true;
+            nebulaParticles.rotation.z += 0.0001; nebulaParticles.rotation.y += 0.00005;
+            camera.position.x += (mouseX - camera.position.x) * 0.02; camera.position.y += (-mouseY - camera.position.y) * 0.02;
+            camera.lookAt(scene.position);
+            renderer.render(scene, camera);
+            requestAnimationFrame(animateStars);
+        }
+        initThreeJS();
+
+        // --- APPLICATION LOGIC ---
+        const fileUpload = document.getElementById('fileUpload'), searchInput = document.getElementById('searchInput'), courseSearchInput = document.getElementById('courseSearchInput'), resultsContainer = document.getElementById('resultsContainer'), initialMessage = document.getElementById('initialMessage'), searchContainer = document.getElementById('searchContainer'), fileNameSpan = document.getElementById('fileName'), filterContainer = document.getElementById('filterContainer'), accountListContainer = document.getElementById('accountList'), accountDetailsContainer = document.getElementById('accountDetails'), courseListContainer = document.getElementById('courseList'), accountCountSpan = document.getElementById('accountCount'), courseCountSpan = document.getElementById('courseCount'), noAccountsMessage = document.getElementById('noAccountsMessage'), accountDetailsWrapper = document.getElementById('accountDetailsWrapper'), courseListWrapper = document.getElementById('courseListWrapper'), selectAccountPrompt = document.getElementById('selectAccountPrompt'), exportButton = document.getElementById('exportButton'), exportModal = document.getElementById('exportModal'), closeModal = document.getElementById('closeModal'), exportUserPassBtn = document.getElementById('exportUserPass'), exportFullDetailsBtn = document.getElementById('exportFullDetails'), exportCountSpan = document.getElementById('exportCount');
+
+        let allAccounts = [], currentlyDisplayedAccounts = [], selectedAccount = null;
+        const DOMAIN_KEYWORDS = ['AI', 'Hacking', 'Python', 'DevOps', 'Agile', 'Linux', 'Java', 'Cloud', 'Android', 'Security', 'Web', 'JavaScript', 'React', 'AWS', 'Data Science', 'Machine Learning', 'Cybersecurity', 'Marketing', 'SEO', 'Business', 'Finance', 'Management', 'Design', 'UI/UX', 'Photoshop', 'Game', 'Health', 'C++', 'SQL', 'Docker', 'Kubernetes', 'Go', 'Excel', 'Drawing', 'Photography', 'Music'];
+
+        fileUpload.addEventListener('change', handleFileSelect);
+        searchInput.addEventListener('input', handleSearch);
+        courseSearchInput.addEventListener('input', handleCourseSearch);
+        exportButton.addEventListener('click', showExportModal);
+        closeModal.addEventListener('click', hideExportModal);
+        exportUserPassBtn.addEventListener('click', () => handleExport('user_pass'));
+        exportFullDetailsBtn.addEventListener('click', () => handleExport('full_details'));
+        
+        gsap.from("#header, #controls, #initialMessage", { duration: 1.2, y: -30, opacity: 0, stagger: 0.25, ease: "power3.out", delay: 0.2 });
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file || !file.name.endsWith('.txt')) { alert('Please upload a valid .txt file.'); return; }
+            fileNameSpan.textContent = `Processing file...`;
+            setTimeout(() => {
+                const reader = new FileReader();
+                reader.onload = (e) => parseAndDisplayData(e.target.result, file.name);
+                reader.readAsText(file);
+            }, 50);
+        }
+        
+        function parseAndDisplayData(content, fileName) {
+            allAccounts = [];
+            accountListContainer.innerHTML = '';
+            clearDetailsPanel();
+            const accountBlocks = content.split(/^\s*--------------------------------------------------\s*$/m);
+            
+            accountBlocks.forEach((block, index) => {
+                if (block.trim() === '') return;
+                const lines = block.split('\n').filter(line => line.trim() !== '');
+                const accountData = {};
+                const courses = [];
+                let isCourseSection = false;
+                lines.forEach(line => {
+                    const trimmedLine = line.trim();
+                    if (trimmedLine.toLowerCase().startsWith('courses:')) { isCourseSection = true; return; }
+                    if (isCourseSection && trimmedLine.startsWith('- ')) { courses.push(trimmedLine.substring(2).trim()); } 
+                    else {
+                        const parts = trimmedLine.split(':');
+                        if (parts.length > 1) {
+                            accountData[parts[0].trim()] = parts.slice(1).join(':').trim();
+                        }
+                    }
+                });
+                allAccounts.push({ id: index, details: accountData, courses: courses, raw: block.trim() });
+            });
+
+            setupFilters();
+            displayAccountList(allAccounts);
+            fileNameSpan.textContent = `Loaded ${allAccounts.length} accounts from ${fileName}`;
+            gsap.to(initialMessage, { duration: 0.5, opacity: 0, onComplete: () => initialMessage.classList.add('hidden') });
+            resultsContainer.classList.remove('hidden');
+            exportButton.classList.remove('hidden');
+            gsap.from("#resultsContainer > div, #exportButton", { duration: 0.8, opacity: 0, y: 30, stagger: 0.2, ease: "power3.out" });
+            gsap.to(searchContainer, { duration: 0.5, opacity: 1, ease: "power2.out", delay: 0.5 });
+        }
+        
+        function setupFilters() {
+            filterContainer.innerHTML = ''; 
+            const createButton = (text, keyword, isAll = false) => {
+                const button = document.createElement('button');
+                button.className = `filter-btn px-3 py-1 text-sm font-semibold rounded-full transition-all duration-200 ${isAll ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-indigo-500 text-gray-200'}`;
+                button.textContent = text;
+                button.dataset.keyword = keyword;
+                button.addEventListener('click', handleFilterClick);
+                return button;
+            };
+            filterContainer.appendChild(createButton('All', 'all', true));
+            DOMAIN_KEYWORDS.sort().forEach(keyword => filterContainer.appendChild(createButton(keyword, keyword.toLowerCase())));
+            gsap.from(".filter-btn", { duration: 0.5, opacity: 0, scale: 0.8, y: 10, stagger: 0.03, ease: "power2.out", delay: 0.8 });
+        }
+
+        function handleFilterClick(event) {
+            const keyword = event.target.dataset.keyword;
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-600', 'text-white');
+                btn.classList.add('bg-gray-700', 'text-gray-200');
+            });
+            event.target.classList.add('bg-indigo-600', 'text-white');
+            event.target.classList.remove('bg-gray-700', 'text-gray-200');
+            searchInput.value = '';
+            const filtered = keyword === 'all' ? allAccounts : allAccounts.filter(acc => acc.courses.some(c => c.toLowerCase().includes(keyword)));
+            clearDetailsPanel();
+            displayAccountList(filtered);
+        }
+
+        function displayAccountList(accounts) {
+            currentlyDisplayedAccounts = accounts;
+            accountListContainer.innerHTML = '';
+            accountCountSpan.textContent = accounts.length;
+            exportButton.disabled = accounts.length === 0;
+            noAccountsMessage.classList.toggle('hidden', accounts.length > 0);
+            
+            accounts.forEach(account => {
+                const accountItem = document.createElement('div');
+                accountItem.className = 'account-item p-3 rounded-lg cursor-pointer transition-colors duration-200 border border-transparent hover:bg-gray-700/50 hover:border-indigo-500';
+                accountItem.dataset.accountId = account.id;
+                accountItem.innerHTML = `<div class="flex justify-between items-center"><p class="font-bold text-white truncate pr-2">${account.details.Name || 'Unnamed'}</p><span class="text-xs font-semibold text-indigo-300 bg-indigo-900/50 px-2 py-1 rounded-full flex-shrink-0">${account.courses.length}</span></div><p class="text-sm text-gray-400 truncate">${account.details.Email || 'No Email'}</p>`;
+                accountItem.addEventListener('click', () => {
+                    displaySelectedAccount(account);
+                    document.querySelectorAll('.account-item').forEach(item => item.classList.remove('bg-indigo-600/50', 'border-indigo-500'));
+                    accountItem.classList.add('bg-indigo-600/50', 'border-indigo-500');
+                });
+                accountListContainer.appendChild(accountItem);
+            });
+            gsap.from(".account-item", { duration: 0.6, opacity: 0, x: -25, stagger: 0.05, ease: "power2.out" });
+        }
+
+        function displaySelectedAccount(account) {
+            selectedAccount = account;
+            courseSearchInput.value = '';
+            gsap.to([accountDetailsWrapper, courseListWrapper], { duration: 0.4, opacity: 0, y: 15, ease: "power2.in", onComplete: () => {
+                displayAccountDetails(account.details);
+                displayCourses(account.courses);
+                selectAccountPrompt.classList.add('hidden');
+                gsap.to(accountDetailsWrapper, { duration: 0.5, opacity: 1, y: 0, ease: "power2.out", delay: 0.1 });
+                gsap.to(courseListWrapper, { duration: 0.5, opacity: 1, y: 0, ease: "power2.out", delay: 0.2 });
+            }});
+        }
+        
+        function clearDetailsPanel() {
+            selectedAccount = null;
+            gsap.to([accountDetailsWrapper, courseListWrapper], { duration: 0.3, opacity: 0, y: 10, ease: "power1.in", onComplete: () => selectAccountPrompt.classList.remove('hidden') });
+        }
+
+        function displayAccountDetails(data) {
+            accountDetailsContainer.innerHTML = '';
+            const detailOrder = ['Name', 'User ID', 'Email', 'Password', 'Status', 'Plan', 'Total Courses', 'Credit Card'];
+            detailOrder.forEach(key => {
+                if (data[key]) {
+                    const value = data[key];
+                    const detailElement = document.createElement('div');
+                    detailElement.innerHTML = `<p class="text-sm font-medium text-gray-400">${key}</p><p class="text-md font-semibold text-white break-words">${value}</p>`;
+                    accountDetailsContainer.appendChild(detailElement);
+                }
+            });
+        }
+
+        function displayCourses(courses) {
+            courseListContainer.innerHTML = '';
+            courseCountSpan.textContent = courses.length;
+            if (courses.length === 0) { courseListContainer.innerHTML = '<p class="text-gray-500">No courses found matching your criteria.</p>'; return; }
+            courses.forEach(course => {
+                const listItem = document.createElement('li');
+                listItem.className = 'bg-gray-800/50 p-3 rounded-lg flex items-center gap-3';
+                listItem.innerHTML = `<span class="flex-shrink-0 h-2 w-2 bg-indigo-400 rounded-full"></span><span class="flex-grow">${course}</span>`;
+                courseListContainer.appendChild(listItem);
+            });
+            gsap.from("#courseList li", { duration: 0.5, opacity: 0, x: -20, stagger: 0.04, ease: "power2.out" });
+        }
+
+        function handleSearch() {
+            document.querySelectorAll('.filter-btn').forEach(btn => { btn.classList.remove('bg-indigo-600', 'text-white'); btn.classList.add('bg-gray-700', 'text-gray-200'); });
+            const searchTerm = searchInput.value.toLowerCase();
+            const filteredAccounts = allAccounts.filter(account => Object.values(account.details).some(val => String(val).toLowerCase().includes(searchTerm)) || account.courses.some(course => course.toLowerCase().includes(searchTerm)));
+            clearDetailsPanel();
+            displayAccountList(filteredAccounts);
+        }
+        
+        function handleCourseSearch() {
+            if (!selectedAccount) return;
+            const searchTerm = courseSearchInput.value.toLowerCase();
+            const filteredCourses = selectedAccount.courses.filter(course => course.toLowerCase().includes(searchTerm));
+            displayCourses(filteredCourses);
+        }
+
+        // --- NEW & REVISED EXPORT/DOWNLOAD LOGIC ---
+        function showExportModal() {
+            exportCountSpan.textContent = currentlyDisplayedAccounts.length;
+            exportModal.classList.remove('hidden');
+            gsap.to(exportModal, { duration: 0.3, opacity: 1 });
+            gsap.to("#exportModal > div", { duration: 0.3, scale: 1, ease: "back.out(1.7)"});
+        }
+
+        function hideExportModal() {
+            gsap.to(exportModal, { duration: 0.3, opacity: 0, onComplete: () => exportModal.classList.add('hidden') });
+            gsap.to("#exportModal > div", { duration: 0.3, scale: 0.95, ease: "power2.in" });
+        }
+        
+        function downloadAsTxt(content, filename) {
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function generateReport(accounts) {
+            const counts = {};
+            DOMAIN_KEYWORDS.forEach(k => counts[k] = 0);
+
+            accounts.forEach(account => {
+                account.courses.forEach(course => {
+                    const lowerCaseCourse = course.toLowerCase();
+                    DOMAIN_KEYWORDS.forEach(keyword => {
+                        if (lowerCaseCourse.includes(keyword.toLowerCase())) {
+                            counts[keyword]++;
+                        }
+                    });
+                });
+            });
+
+            const reportParts = [];
+            for (const keyword in counts) {
+                if (counts[keyword] > 0) {
+                    reportParts.push(`${keyword}(${counts[keyword]})`);
+                }
+            }
+            return `domain: ${reportParts.join(' ')}`;
+        }
+
+        function handleExport(format) {
+            if (currentlyDisplayedAccounts.length === 0) { alert('No accounts to export.'); return; }
+
+            const report = generateReport(currentlyDisplayedAccounts);
+            let mainContent;
+
+            if (format === 'user_pass') { // NORMAL DATA
+                mainContent = currentlyDisplayedAccounts.map(account => {
+                    const user = account.details.Email ?? '';
+                    const pass = account.details.Password ?? '';
+                    return `${user}:${pass}`;
+                }).join('\n');
+            } else { // FULL DATA
+                mainContent = currentlyDisplayedAccounts.map(account => {
+                    const d = account.details, c = account.courses;
+                    const user = d.Email ?? '', pass = d.Password ?? '';
+                    const totalCourses = d['Total Courses'] ?? c.length;
+                    const plan = d.Plan ?? 'N/A', cc = d['Credit Card'] ?? 'N/A', name = d.Name ?? 'N/A';
+                    return `${user}:${pass} | total_course : ${totalCourses} | plan : ${plan} | cc: ${cc} | name : ${name} | course : ${JSON.stringify(c)}`;
+                }).join('\n');
+            }
+            
+            const fullContent = `${report}\n\n${mainContent}`;
+            
+            // Generate Filename
+            const now = new Date();
+            const timestamp = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
+            const count = currentlyDisplayedAccounts.length;
+            const caption = format === 'user_pass' ? 'user_pass' : 'fullcaption';
+            const filename = `hits_udemy_${count}_${timestamp}_${caption}.txt`;
+
+            downloadAsTxt(fullContent, filename);
+            hideExportModal();
+        }
+
+    </script>
+</body>
+</html>
